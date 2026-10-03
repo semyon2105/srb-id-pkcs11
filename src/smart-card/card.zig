@@ -12,6 +12,35 @@ const PkcsError = pkcs_error.PkcsError;
 pub const Card = struct {
     smart_card: pcsc.Card,
 
+    fn selectFileOld(
+        self: *const Card,
+        allocator: std.mem.Allocator,
+        name: []const u8,
+        selection_method: u8,
+        selection_option: u8,
+        ne: u32,
+    ) PkcsError!void {
+        const data_unit = apdu.build(
+            allocator,
+            0x00,
+            0xA4,
+            selection_method,
+            selection_option,
+            name,
+            ne,
+        ) catch
+            return PkcsError.HostMemory;
+        defer allocator.free(data_unit);
+        defer std.crypto.secureZero(u8, data_unit);
+
+        const response = try self.transmit(allocator, data_unit);
+        defer allocator.free(response);
+        defer std.crypto.secureZero(u8, response);
+
+        if (!apdu.statusOK(response))
+            return PkcsError.DeviceError;
+    }
+
     fn selectFile(
         self: *const Card,
         allocator: std.mem.Allocator,
@@ -140,12 +169,9 @@ pub const Card = struct {
         try initCrypto(self, allocator);
 
         const file_name = [_]u8{ 0x70, 0xf3 };
-        const size = try self.selectFile(allocator, &file_name, 0, 0, 0xff);
+        try self.selectFileOld(allocator, &file_name, 0, 0, 0);
 
-        if (size == null)
-            return PkcsError.GeneralError;
-
-        const data = try self.read(allocator, 0, size.?);
+        const data = try self.read(allocator, 0, 52);
         defer allocator.free(data);
         defer std.crypto.secureZero(u8, data);
 
@@ -164,7 +190,7 @@ pub const Card = struct {
         allocator: std.mem.Allocator,
     ) PkcsError!void {
         const file_name = [_]u8{ 0xA0, 0x00, 0x00, 0x00, 0x63, 0x50, 0x4B, 0x43, 0x53, 0x2D, 0x31, 0x35 };
-        _ = try self.selectFile(allocator, &file_name, 0x04, 0x00, 0);
+        try self.selectFileOld(allocator, &file_name, 0x04, 0x00, 0);
     }
 
     pub fn readRandom(
