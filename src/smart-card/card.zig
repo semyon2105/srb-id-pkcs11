@@ -169,9 +169,12 @@ pub const Card = struct {
         try initCrypto(self, allocator);
 
         const file_name = [_]u8{ 0x70, 0xf3 };
-        try self.selectFileOld(allocator, &file_name, 0, 0, 0);
+        const size = try self.selectFile(allocator, &file_name, 0, 0, 0xff);
 
-        const data = try self.read(allocator, 0, 52);
+        if (size == null)
+            return PkcsError.GeneralError;
+
+        const data = try self.read(allocator, 0, size.?);
         defer allocator.free(data);
         defer std.crypto.secureZero(u8, data);
 
